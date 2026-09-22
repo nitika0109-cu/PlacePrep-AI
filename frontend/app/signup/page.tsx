@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -13,45 +13,95 @@ import {
   EyeOff,
   AlertCircle
 } from 'lucide-react';
-import { api } from '../../lib/api';
+import { api, authStorage } from '../../lib/api';
 import { ScrollReveal } from '../../components/animations/ScrollReveal';
 
 export default function SignupPage() {
   const router = useRouter();
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [error, setError] = useState('');
+
+  // If the user is already logged in, don't keep them on the signup page.
+  useEffect(() => {
+    const token = authStorage.getToken();
+
+    if (token) {
+      router.replace('/dashboard');
+      router.refresh();
+      return;
+    }
+
+    setIsCheckingAuth(false);
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
     }
+
     setError('');
     setIsLoading(true);
 
     try {
+      // api.register() stores the authentication token and user
+      // in authStorage/localStorage when registration succeeds.
       await api.register({
         name,
         email,
         password,
       });
-      const redirect = typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('redirect')
-        : null;
-      router.push(redirect && redirect.startsWith('/') ? redirect : '/dashboard');
+
+      // Preserve an optional internal redirect.
+      const redirect =
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('redirect')
+          : null;
+
+      const destination =
+        redirect &&
+        redirect.startsWith('/') &&
+        !redirect.startsWith('//')
+          ? redirect
+          : '/dashboard';
+
+      /*
+       * Use a full browser navigation after successful signup.
+       *
+       * This guarantees that the newly stored authentication state
+       * is picked up by the dashboard and prevents the signup page
+       * from remaining visible after account creation.
+       */
+      window.location.replace(destination);
     } catch (err: any) {
-      setError(err.message || 'Failed to create account. Please try again.');
-    } finally {
+      setError(
+        err.message || 'Failed to create account. Please try again.'
+      );
       setIsLoading(false);
     }
   };
 
+  // Avoid showing the signup form for a moment while checking
+  // whether an existing authentication token is present.
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-black">
+        <div className="flex items-center gap-2 text-sm text-neutral-400">
+          <span className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+          <span>Checking account...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 sm:p-6 bg-black relative overflow-hidden">
@@ -69,12 +119,17 @@ export default function SignupPage() {
             <div className="w-9 h-9 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center shadow-md shadow-purple-500/20 group-hover:scale-105 transition-transform">
               <Sparkles className="w-4 h-4 text-purple-400" />
             </div>
+
             <span className="text-lg font-bold tracking-tight text-white flex items-center gap-1">
               PlacePrep
               <span className="w-1.5 h-1.5 rounded-full bg-purple-400 inline-block" />
             </span>
           </Link>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Create Student Account</h1>
+
+          <h1 className="text-2xl font-bold text-white tracking-tight">
+            Create Student Account
+          </h1>
+
           <p className="text-xs text-neutral-400 mt-1">
             Start your placement journey with AI mock interviews &amp; roadmaps.
           </p>
@@ -93,8 +148,10 @@ export default function SignupPage() {
             <label className="block text-[11px] font-semibold uppercase tracking-wider text-neutral-400 mb-1">
               Full Name
             </label>
+
             <div className="relative">
               <User className="w-4 h-4 text-neutral-500 absolute left-3.5 top-2.5" />
+
               <input
                 type="text"
                 required
@@ -110,8 +167,10 @@ export default function SignupPage() {
             <label className="block text-[11px] font-semibold uppercase tracking-wider text-neutral-400 mb-1">
               College Email
             </label>
+
             <div className="relative">
               <Mail className="w-4 h-4 text-neutral-500 absolute left-3.5 top-2.5" />
+
               <input
                 type="email"
                 required
@@ -128,8 +187,10 @@ export default function SignupPage() {
               <label className="block text-[11px] font-semibold uppercase tracking-wider text-neutral-400 mb-1">
                 Password
               </label>
+
               <div className="relative">
                 <Lock className="w-4 h-4 text-neutral-500 absolute left-2.5 top-2.5" />
+
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
@@ -145,8 +206,10 @@ export default function SignupPage() {
               <label className="block text-[11px] font-semibold uppercase tracking-wider text-neutral-400 mb-1">
                 Confirm
               </label>
+
               <div className="relative">
                 <Lock className="w-4 h-4 text-neutral-500 absolute left-2.5 top-2.5" />
+
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
@@ -155,13 +218,20 @@ export default function SignupPage() {
                   placeholder="••••••••"
                   className="w-full pl-8 pr-8 py-2 rounded-xl bg-black/60 border border-white/[0.09] text-white placeholder-neutral-500 text-xs focus:outline-none focus:border-purple-500 transition-colors"
                 />
+
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-2.5 top-2.5 text-neutral-500 hover:text-neutral-300"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-label={
+                    showPassword ? 'Hide password' : 'Show password'
+                  }
                 >
-                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  {showPassword ? (
+                    <EyeOff className="w-3.5 h-3.5" />
+                  ) : (
+                    <Eye className="w-3.5 h-3.5" />
+                  )}
                 </button>
               </div>
             </div>
@@ -189,11 +259,13 @@ export default function SignupPage() {
         {/* Footer switch prompt */}
         <div className="mt-5 pt-4 border-t border-white/[0.08] text-center text-xs text-neutral-400">
           Already have an account?{' '}
-          <Link href="/login" className="text-purple-400 font-semibold hover:underline">
+          <Link
+            href="/login"
+            className="text-purple-400 font-semibold hover:underline"
+          >
             Sign in
           </Link>
         </div>
-
       </ScrollReveal>
     </div>
   );
