@@ -174,9 +174,35 @@ PlacePrep adheres to strict responsible and ethical AI guidelines:
 
 ## 10. Deployment (Vercel)
 
-PlacePrep is configured for seamless deployment of both frontend (Next.js) and backend (Express serverless) on Vercel.
+PlacePrep is deployed using Vercel with separate frontend and backend services.
 
-- See the complete step-by-step guide: **[docs/vercel-deployment.md](docs/vercel-deployment.md)**.
+### 🌐 Live Application
+
+**[Open PlacePrep]https://place-prep-frontend-kappa.vercel.app/**
+
+### Deployment Services
+
+| Component | Technology | Deployment |
+|---|---|---|
+| Frontend | Next.js / React | Vercel |
+| Backend API | Node.js / Express | Vercel |
+| Database | Supabase PostgreSQL | Supabase |
+| AI Services | Microsoft Foundry / Azure AI | Microsoft Azure |
+| Knowledge Search | Azure AI Search | Microsoft Azure |
+
+### Backend API
+
+The backend API is deployed separately at:
+
+**https://place-prep-ai-tau.vercel.app**
+
+The frontend communicates with the deployed backend API for authentication, chatbot, mock interview, roadmap generation, and other application services.
+
+### Deployment Guide
+
+See the complete step-by-step guide:
+
+[**docs/vercel-deployment.md**](https://github.com/nitika0109-cu/PlacePrep-AI/blob/main/docs/vercel-deployment.md)
 
 ---
 
