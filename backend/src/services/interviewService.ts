@@ -283,105 +283,413 @@ export class InterviewService {
     };
   }): Promise<InterviewAnswerResponse> {
     const session = this.sessions.get(params.sessionId);
+
     if (!session) {
       throw new Error('Interview session not found or expired.');
     }
 
-    const currentQ = session.questions.find(q => q.id === params.questionId) || session.questions[session.currentQuestionIndex];
-    const transcript = params.transcript || '';
-    const lowerTranscript = transcript.toLowerCase();
+    const currentQ =
+      session.questions.find(q => q.id === params.questionId) ||
+      session.questions[session.currentQuestionIndex];
+
+    if (!currentQ) {
+      throw new Error('Interview question not found.');
+    }
+
+    /*
+     * Prevent accidental duplicate submissions for the same question.
+     */
+    const alreadyAnswered = session.answers.some(
+      answer => answer.questionId === currentQ.id
+    );
+
+    if (alreadyAnswered) {
+      throw new Error('This interview question has already been evaluated.');
+    }
+
+    const transcript = (params.transcript || '').trim();
+
+    /*
+     * A missing/very short transcript is evaluated honestly rather than
+     * receiving an artificial passing score.
+     */
+    const candidateAnswer =
+      transcript.length > 0
+        ? transcript
+        : 'Candidate provided no audible or typed response.';
 
     let technicalScore = 0;
     let relevanceScore = 0;
     let communicationScore = 0;
+    let depthScore = 0;
+
     let feedback = '';
     let keyPointsCovered: string[] = [];
     let suggestedImprovement = '';
     let evaluatedWithAzure = false;
 
-    // 1. Live Azure AI Evaluation when live keys are configured
+    /*
+     * ------------------------------------------------------------
+     * AZURE AI EVALUATION
+     * ------------------------------------------------------------
+     *
+     * Azure evaluates evidence from the actual answer.
+     * The model is NOT asked to invent an overall score.
+     * The backend calculates the final weighted score.
+     */
     if (!config.useMockAI) {
       try {
-        const evalPrompt = `You are a Senior Technical Interviewer evaluating a candidate's spoken response.
-Question: "${currentQ.question}"
-Role: ${session.role} | Category: ${currentQ.category}
-Candidate Answer: "${transcript || 'Candidate provided no audible response.'}"
-Reference Keywords: ${currentQ.idealKeywords.join(', ')}
+        const evalPrompt = `
+You are a senior technical interviewer evaluating one candidate answer.
 
-Provide objective, constructive grading. Respond ONLY with a valid JSON object matching this schema:
+Evaluate ONLY what the candidate actually said.
+Do not give credit for concepts that were not expressed or reasonably implied.
+Do not penalize a concise answer merely because it is short.
+Do not reward an answer merely because it is long.
+Do not require the candidate to use the exact wording of the reference.
+Accept technically valid alternative explanations.
+
+INTERVIEW ROLE:
+${session.role}
+
+QUESTION:
+${currentQ.question}
+
+QUESTION CATEGORY:
+${currentQ.category}
+
+EXPECTED CONCEPTS:
+${currentQ.idealSummary.map(item => `- ${item}`).join('\n')}
+
+REFERENCE KEYWORDS:
+${currentQ.idealKeywords.join(', ')}
+
+CANDIDATE ANSWER:
+${candidateAnswer}
+
+Evaluate these four dimensions independently from 0 to 100:
+
+1. technicalScore
+   Technical correctness and accuracy.
+   Penalize factual errors, contradictions, incorrect complexity claims,
+   and technically misleading statements.
+
+2. relevanceScore
+   How directly and completely the candidate answers the question.
+   Reward coverage of important aspects of the question.
+
+3. communicationScore
+   Clarity, coherence, structure, and understandable explanation.
+   Do NOT use answer length as a substitute for communication quality.
+
+4. depthScore
+   Reasoning, examples, trade-offs, complexity analysis, practical details,
+   or "why" explanations when appropriate to this question.
+   A short answer can still receive a high depth score if it demonstrates
+   the necessary reasoning.
+
+Also identify:
+- concepts actually covered
+- important concepts missing
+- factual errors, if any
+- one concise evidence-based feedback message
+- one actionable improvement
+
+IMPORTANT:
+A score must be supported by the candidate's actual response.
+Do not default all categories to the same number.
+Do not give a high score simply because the answer sounds confident.
+
+Return ONLY valid JSON:
+
 {
-  "technicalScore": <integer 0-100>,
-  "relevanceScore": <integer 0-100>,
-  "communicationScore": <integer 0-100>,
-  "feedback": "<2 sentences evaluating the technical depth and clarity>",
-  "keyPointsCovered": ["<key concept candidate mentioned>", "<second key concept>"],
-  "suggestedImprovement": "<actionable recommendation to improve the answer>"
-}`;
+  "technicalScore": 0,
+  "relevanceScore": 0,
+  "communicationScore": 0,
+  "depthScore": 0,
+  "keyPointsCovered": [],
+  "missingKeyPoints": [],
+  "factualErrors": [],
+  "feedback": "",
+  "suggestedImprovement": ""
+}
+`;
 
-        const rawJson = await aiService.completePrompt([
-          { role: 'system', content: 'You are an interview grading engine. Return JSON only without code blocks or markdown.' },
-          { role: 'user', content: evalPrompt }
-        ], { temperature: 0.3, maxTokens: 400 });
+        const rawJson = await aiService.completePrompt(
+          [
+            {
+              role: 'system',
+              content:
+                'You are a rigorous but fair interview grading engine. Return JSON only. Never use markdown fences.',
+            },
+            {
+              role: 'user',
+              content: evalPrompt,
+            },
+          ],
+          {
+            /*
+             * Low temperature keeps evaluation consistent while still
+             * allowing the model to judge different answers differently.
+             */
+            temperature: 0.15,
+            maxTokens: 700,
+          }
+        );
 
         if (rawJson) {
-          const cleaned = rawJson.replace(/```json/g, '').replace(/```/g, '').trim();
+          const cleaned = rawJson
+            .replace(/```json/gi, '')
+            .replace(/```/g, '')
+            .trim();
+
           const parsed = JSON.parse(cleaned);
-          if (parsed.technicalScore !== undefined && parsed.feedback) {
-            technicalScore = Math.min(99, Math.max(30, Number(parsed.technicalScore)));
-            relevanceScore = Math.min(99, Math.max(30, Number(parsed.relevanceScore || 70)));
-            communicationScore = Math.min(99, Math.max(30, Number(parsed.communicationScore || 70)));
-            feedback = parsed.feedback;
-            keyPointsCovered = Array.isArray(parsed.keyPointsCovered) ? parsed.keyPointsCovered : ['Understood the question premise.'];
-            suggestedImprovement = parsed.suggestedImprovement || 'Discuss time/space trade-offs and edge cases.';
+
+          const numeric = (value: unknown): number | null => {
+            const n = Number(value);
+            return Number.isFinite(n) ? n : null;
+          };
+
+          const parsedTechnical = numeric(parsed.technicalScore);
+          const parsedRelevance = numeric(parsed.relevanceScore);
+          const parsedCommunication = numeric(parsed.communicationScore);
+          const parsedDepth = numeric(parsed.depthScore);
+
+          /*
+           * Require ALL four dimensions.
+           * We do not silently turn missing dimensions into 70.
+           */
+          if (
+            parsedTechnical !== null &&
+            parsedRelevance !== null &&
+            parsedCommunication !== null &&
+            parsedDepth !== null &&
+            typeof parsed.feedback === 'string'
+          ) {
+            technicalScore = Math.round(
+              Math.min(100, Math.max(0, parsedTechnical))
+            );
+
+            relevanceScore = Math.round(
+              Math.min(100, Math.max(0, parsedRelevance))
+            );
+
+            communicationScore = Math.round(
+              Math.min(100, Math.max(0, parsedCommunication))
+            );
+
+            depthScore = Math.round(
+              Math.min(100, Math.max(0, parsedDepth))
+            );
+
+            keyPointsCovered = Array.isArray(parsed.keyPointsCovered)
+              ? parsed.keyPointsCovered
+                  .filter((item: unknown) => typeof item === 'string')
+                  .slice(0, 6)
+              : [];
+
+            const missingKeyPoints = Array.isArray(parsed.missingKeyPoints)
+              ? parsed.missingKeyPoints
+                  .filter((item: unknown) => typeof item === 'string')
+                  .slice(0, 4)
+              : [];
+
+            const factualErrors = Array.isArray(parsed.factualErrors)
+              ? parsed.factualErrors
+                  .filter((item: unknown) => typeof item === 'string')
+                  .slice(0, 4)
+              : [];
+
+            feedback = parsed.feedback.trim();
+
+            /*
+             * Add concrete missing/error evidence to the feedback when
+             * the model identified it.
+             */
+            if (factualErrors.length > 0) {
+              feedback += ` Factual issue to review: ${factualErrors[0]}`;
+            }
+
+            suggestedImprovement =
+              typeof parsed.suggestedImprovement === 'string' &&
+              parsed.suggestedImprovement.trim().length > 0
+                ? parsed.suggestedImprovement.trim()
+                : missingKeyPoints.length > 0
+                  ? `Strengthen the answer by covering: ${missingKeyPoints
+                      .slice(0, 2)
+                      .join('; ')}.`
+                  : 'Add one concrete example or explain the relevant trade-off more explicitly.';
+
+            /*
+             * Keep this as a real signal, not a hard-coded score.
+             */
+            if (keyPointsCovered.length === 0) {
+              keyPointsCovered.push('No clearly demonstrated reference concept was identified.');
+            }
+
             evaluatedWithAzure = true;
           }
         }
       } catch (azureErr) {
-        console.warn('[InterviewService] Azure evaluation error, using fallback heuristic:', azureErr);
+        console.warn(
+          '[InterviewService] Azure evaluation failed; using transparent local rubric fallback:',
+          azureErr
+        );
       }
     }
 
-    // 2. Heuristic Rubric Fallback (Mock Mode or Offline Fallback)
+    /*
+     * ------------------------------------------------------------
+     * LOCAL RUBRIC FALLBACK
+     * ------------------------------------------------------------
+     *
+     * This is only used when Azure is unavailable.
+     * It is deliberately conservative and does NOT pretend to be
+     * equivalent to semantic Azure evaluation.
+     */
     if (!evaluatedWithAzure) {
-      const matchedKeywords = currentQ.idealKeywords.filter(k => lowerTranscript.includes(k.toLowerCase()));
-      const coverageRatio = currentQ.idealKeywords.length > 0 ? (matchedKeywords.length / currentQ.idealKeywords.length) : 0.7;
+      const normalizedTranscript = transcript.toLowerCase();
 
-      technicalScore = Math.round(55 + (coverageRatio * 40));
-      if (transcript.length < 25) technicalScore = Math.min(technicalScore, 40);
+      const matchedKeywords = currentQ.idealKeywords.filter(keyword =>
+        normalizedTranscript.includes(keyword.toLowerCase())
+      );
 
-      relevanceScore = Math.round(65 + (coverageRatio * 30));
-      if (lowerTranscript.includes(currentQ.category.toLowerCase())) relevanceScore += 5;
+      const keywordCoverage =
+        currentQ.idealKeywords.length > 0
+          ? matchedKeywords.length / currentQ.idealKeywords.length
+          : 0;
 
-      communicationScore = 75;
-      if (transcript.length > 120) communicationScore += 10;
-      if (transcript.length > 250) communicationScore += 5;
-      if (transcript.length < 30) communicationScore = 50;
+      const wordCount = transcript
+        ? transcript.split(/\s+/).filter(Boolean).length
+        : 0;
 
-      technicalScore = Math.min(98, Math.max(35, technicalScore));
-      relevanceScore = Math.min(98, Math.max(40, relevanceScore));
-      communicationScore = Math.min(96, Math.max(45, communicationScore));
+      /*
+       * Technical score:
+       * Starts from evidence coverage, then applies a penalty for
+       * extremely short answers.
+       */
+      technicalScore = Math.round(35 + keywordCoverage * 60);
 
-      keyPointsCovered = matchedKeywords.slice(0, 3).map(k => `Addressed key concept: "${k}"`);
+      if (wordCount === 0) {
+        technicalScore = 0;
+      } else if (wordCount < 12) {
+        technicalScore = Math.min(technicalScore, 45);
+      }
+
+      /*
+       * Relevance:
+       * Keyword evidence is useful as an offline approximation.
+       */
+      relevanceScore = Math.round(40 + keywordCoverage * 55);
+
+      if (wordCount === 0) {
+        relevanceScore = 0;
+      } else if (wordCount < 8) {
+        relevanceScore = Math.min(relevanceScore, 40);
+      }
+
+      /*
+       * Communication:
+       * Do not equate length with communication.
+       * We use basic structural signals only in fallback mode.
+       */
+      if (wordCount === 0) {
+        communicationScore = 0;
+      } else {
+        const sentenceCount = Math.max(
+          1,
+          transcript.split(/[.!?]+/).filter(Boolean).length
+        );
+
+        const hasStructure =
+          sentenceCount >= 2 ||
+          /\b(first|second|because|therefore|however|for example|whereas|while)\b/i.test(
+            transcript
+          );
+
+        communicationScore = hasStructure ? 75 : 60;
+
+        if (wordCount < 8) {
+          communicationScore = Math.min(communicationScore, 45);
+        }
+      }
+
+      /*
+       * Depth:
+       * Look for reasoning/example/complexity signals rather than raw length.
+       */
+      const hasReasoning =
+        /\b(because|therefore|why|trade[- ]off|advantage|disadvantage|when|if)\b/i.test(
+          transcript
+        );
+
+      const hasExample =
+        /\b(example|for instance|such as|in practice|e\.g\.)\b/i.test(
+          transcript
+        );
+
+      const hasComplexity =
+        /\bO\([^)]+\)|complexity|time|space|memory|latency|scalability\b/i.test(
+          transcript
+        );
+
+      depthScore =
+        wordCount === 0
+          ? 0
+          : 35 +
+            (hasReasoning ? 20 : 0) +
+            (hasExample ? 20 : 0) +
+            (hasComplexity ? 20 : 0);
+
+      depthScore = Math.min(100, depthScore);
+
+      keyPointsCovered = matchedKeywords
+        .slice(0, 4)
+        .map(keyword => `Addressed concept: "${keyword}"`);
+
       if (keyPointsCovered.length === 0) {
-        keyPointsCovered.push('Communicated core idea reasonably well.');
+        keyPointsCovered.push(
+          'No reference keyword was detected by the offline evaluator.'
+        );
       }
 
-      const missingKeywords = currentQ.idealKeywords.filter(k => !lowerTranscript.includes(k.toLowerCase()));
-      suggestedImprovement = 'Elaborate more on time/space trade-offs and real-world system applications.';
-      if (missingKeywords.length > 0) {
-        suggestedImprovement = `Strengthen your answer by mentioning: ${missingKeywords.slice(0, 2).join(', ')}.`;
-      }
+      const missingKeywords = currentQ.idealKeywords.filter(
+        keyword => !normalizedTranscript.includes(keyword.toLowerCase())
+      );
 
-      const overallEst = Math.round((technicalScore * 0.45) + (relevanceScore * 0.35) + (communicationScore * 0.20));
-      feedback = overallEst >= 75
-        ? `Strong explanation! You clearly articulated the concepts of ${currentQ.category}. Your technical vocabulary was solid.`
-        : `Decent attempt. You touched upon basic aspects of ${currentQ.category}, but you can make your response much crisper with concrete examples and complexity details.`;
+      suggestedImprovement =
+        missingKeywords.length > 0
+          ? `Strengthen the answer by covering: ${missingKeywords
+              .slice(0, 3)
+              .join(', ')}.`
+          : 'Add a concrete example and explain one practical trade-off.';
+
+      feedback =
+        wordCount === 0
+          ? 'No usable answer was detected, so the response could not demonstrate the required concepts.'
+          : keywordCoverage >= 0.65
+            ? 'The response covers several expected concepts. Improve it further with precise reasoning, examples, and relevant trade-offs.'
+            : 'The response addresses only part of the expected material. Add the missing technical concepts and explain them with greater precision.';
     }
 
-    const overallQScore = Math.round((technicalScore * 0.45) + (relevanceScore * 0.35) + (communicationScore * 0.20));
+    /*
+     * ------------------------------------------------------------
+     * FINAL QUESTION SCORE
+     * ------------------------------------------------------------
+     *
+     * Backend owns the formula. Azure supplies evidence for the
+     * four dimensions; Azure does NOT choose the final weighted score.
+     */
+    const overallQScore = Math.round(
+      technicalScore * 0.40 +
+        relevanceScore * 0.30 +
+        communicationScore * 0.20 +
+        depthScore * 0.10
+    );
 
-
-    // Save answer record
+    /*
+     * Save the evaluated answer before moving to the next question.
+     */
     session.answers.push({
       questionId: currentQ.id,
       questionIndex: session.currentQuestionIndex + 1,
@@ -392,20 +700,24 @@ Provide objective, constructive grading. Respond ONLY with a valid JSON object m
       communicationScore,
       feedback,
       keyPointsCovered,
-      suggestedImprovement
+      suggestedImprovement,
     });
 
     session.currentQuestionIndex += 1;
-    const isCompleted = session.currentQuestionIndex >= session.totalQuestions;
+
+    const isCompleted =
+      session.currentQuestionIndex >= session.totalQuestions;
 
     let nextQuestion;
+
     if (!isCompleted) {
       const nq = session.questions[session.currentQuestionIndex];
+
       nextQuestion = {
         questionId: nq.id,
         questionIndex: session.currentQuestionIndex + 1,
         question: nq.question,
-        category: nq.category
+        category: nq.category,
       };
     }
 
@@ -415,114 +727,184 @@ Provide objective, constructive grading. Respond ONLY with a valid JSON object m
       keyPointsCovered,
       suggestedImprovement,
       nextQuestion,
-      isCompleted
+      isCompleted,
     };
   }
 
   finishSession(sessionId: string): InterviewFinishResponse {
-    let session = this.sessions.get(sessionId);
+    const session = this.sessions.get(sessionId);
 
-    // If session not found in memory (e.g. mock frontend direct request), create realistic fallback
-    if (!session || session.answers.length === 0) {
-      return {
-        sessionId,
-        overallScore: 78,
-        technical: 82,
-        relevance: 85,
-        communication: 74,
-        strengths: [
-          'Explained core concepts clearly with sound intuition',
-          'Demonstrated strong understanding of OOP and Data Structures',
-          'Structured verbal answers with clear beginning and summary'
-        ],
-        improvements: [
-          'Deepen knowledge in SQL joins and transaction isolation levels',
-          'Practice explaining OS process scheduling and memory management',
-          'Quantify answers with specific Big-O time and space metrics'
-        ],
-        recommendations: [
-          'Practice: SQL Joins and Window Functions',
-          'Practice: Process Scheduling vs Thread Context Switching',
-          'Practice: Binary Search on Rotated Arrays'
-        ],
-        questionReviews: [
-          {
-            questionId: 'q-sw-1',
-            questionIndex: 1,
-            question: 'Explain the difference between an Array and a Linked List.',
-            category: 'Data Structures',
-            transcript: 'An array has contiguous memory so you can do O(1) index access, but inserting takes O(n). Linked lists use pointers, so inserting is fast if you have the pointer, but search is sequential.',
-            score: 84,
-            feedback: 'Solid explanation. You correctly identified the memory layout difference and time complexity trade-offs.',
-            idealAnswerHighlights: [
-              'Contiguous memory vs heap-allocated pointer nodes',
-              'O(1) random access vs O(N) sequential traversal',
-              'CPU cache locality advantages of arrays'
-            ]
-          },
-          {
-            questionId: 'q-sw-2',
-            questionIndex: 2,
-            question: 'What are the ACID properties in database management systems?',
-            category: 'DBMS',
-            transcript: 'ACID stands for Atomicity, Consistency, Isolation, Durability. Atomicity means all or nothing. Isolation prevents concurrent transactions from clashing.',
-            score: 79,
-            feedback: 'Good overview of the core acronym. To score higher, mention how Durability is achieved via Write-Ahead Logging.',
-            idealAnswerHighlights: [
-              'Atomicity via rollback logs',
-              'Isolation levels (Read Committed, Repeatable Read, Serializable)',
-              'Durability via redo logs/WAL'
-            ]
-          }
-        ],
-        role: 'Software Developer',
-        difficulty: 'Intermediate',
-        completedAt: new Date().toISOString(),
-        aiDisclaimer: 'Scores and feedback are AI-generated estimates based on defined technical criteria for interview preparation and learning purposes.'
-      };
+    /*
+     * Never fabricate a final score if the real session is missing.
+     */
+    if (!session) {
+      throw new Error('Interview session not found or expired.');
     }
 
-    // Calculate aggregated scores
-    const technicalAvg = Math.round(session.answers.reduce((acc, a) => acc + a.technicalScore, 0) / session.answers.length);
-    const relevanceAvg = Math.round(session.answers.reduce((acc, a) => acc + a.relevanceScore, 0) / session.answers.length);
-    const communicationAvg = Math.round(session.answers.reduce((acc, a) => acc + a.communicationScore, 0) / session.answers.length);
-    const overallScore = Math.round((technicalAvg * 0.45) + (relevanceAvg * 0.35) + (communicationAvg * 0.20));
+    if (session.answers.length === 0) {
+      throw new Error('No evaluated answers found for this interview.');
+    }
+
+    /*
+     * Final scores are averages of the actual evaluated questions.
+     */
+    const technicalAvg = Math.round(
+      session.answers.reduce(
+        (acc, answer) => acc + answer.technicalScore,
+        0
+      ) / session.answers.length
+    );
+
+    const relevanceAvg = Math.round(
+      session.answers.reduce(
+        (acc, answer) => acc + answer.relevanceScore,
+        0
+      ) / session.answers.length
+    );
+
+    const communicationAvg = Math.round(
+      session.answers.reduce(
+        (acc, answer) => acc + answer.communicationScore,
+        0
+      ) / session.answers.length
+    );
+
+    /*
+     * Each question score already includes the 40/30/20/10 rubric,
+     * so the final score is the average of the real evaluated questions.
+     */
+    const finalScore = Math.round(
+      session.answers.reduce((acc, answer) => acc + answer.score, 0) /
+        session.answers.length
+    );
 
     const questionReviews: QuestionReview[] = session.answers.map(ans => {
-      const qTemplate = session!.questions.find(q => q.id === ans.questionId) || session!.questions[ans.questionIndex - 1];
+      const qTemplate =
+        session.questions.find(q => q.id === ans.questionId) ||
+        session.questions[ans.questionIndex - 1];
+
       return {
         questionId: ans.questionId,
         questionIndex: ans.questionIndex,
-        question: qTemplate ? qTemplate.question : 'Technical Interview Question',
-        category: qTemplate ? qTemplate.category : 'General Technical',
+        question: qTemplate
+          ? qTemplate.question
+          : 'Technical Interview Question',
+        category: qTemplate
+          ? qTemplate.category
+          : 'General Technical',
         transcript: ans.transcript,
         score: ans.score,
         feedback: ans.feedback,
-        idealAnswerHighlights: qTemplate ? qTemplate.idealSummary : ['Thorough technical explanation', 'Clear trade-off analysis']
+        idealAnswerHighlights: qTemplate
+          ? qTemplate.idealSummary
+          : [
+              'Thorough technical explanation',
+              'Clear reasoning and trade-off analysis',
+            ],
       };
     });
 
-    const strengths = [
-      'Articulated core algorithms and data structures clearly',
-      'Demonstrated good problem-solving logic and technical vocabulary',
-      'Structured technical responses with concise takeaways'
-    ];
+    /*
+     * Generate strengths from the actual question scores rather than
+     * always returning the same hard-coded statements.
+     */
+    const strengths: string[] = [];
+    const improvements: string[] = [];
 
-    const improvements = [
-      'Discuss Big-O space complexity proactively alongside time complexity',
-      'Mention edge cases (e.g. empty arrays, null pointers, integer overflows)',
-      'Connect abstract definitions to concrete production architectural trade-offs'
-    ];
+    const strongestAnswers = [...session.answers]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 2);
+
+    const weakestAnswers = [...session.answers]
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 2);
+
+    if (technicalAvg >= 75) {
+      strengths.push(
+        'Demonstrated solid technical understanding across the evaluated answers.'
+      );
+    } else {
+      improvements.push(
+        'Strengthen technical accuracy and explain core concepts more precisely.'
+      );
+    }
+
+    if (relevanceAvg >= 75) {
+      strengths.push(
+        'Answers generally stayed relevant to the questions asked.'
+      );
+    } else {
+      improvements.push(
+        'Answer the exact question first and cover the key parts before adding extra detail.'
+      );
+    }
+
+    if (communicationAvg >= 75) {
+      strengths.push(
+        'Communicated technical ideas in a generally clear and understandable way.'
+      );
+    } else {
+      improvements.push(
+        'Use a clearer structure: define the concept, explain how it works, then give an example.'
+      );
+    }
+
+    if (strongestAnswers.length > 0) {
+      const bestQuestion = session.questions.find(
+        q => q.id === strongestAnswers[0].questionId
+      );
+
+      if (bestQuestion) {
+        strengths.push(
+          `Performed particularly well on ${bestQuestion.category}.`
+        );
+      }
+    }
+
+    if (weakestAnswers.length > 0) {
+      const weakQuestion = session.questions.find(
+        q => q.id === weakestAnswers[0].questionId
+      );
+
+      if (weakQuestion) {
+        improvements.push(
+          `Review ${weakQuestion.category} and practice explaining its core concepts with examples.`
+        );
+      }
+    }
+
+    /*
+     * Keep the report useful even when the answer set is small.
+     */
+    if (strengths.length === 0) {
+      strengths.push(
+        'Completed evaluated interview responses that can be used for further practice.'
+      );
+    }
+
+    if (improvements.length === 0) {
+      improvements.push(
+        'Continue practicing deeper reasoning, examples, and real-world trade-offs.'
+      );
+    }
 
     const recommendations = [
-      'Practice: In-depth SQL Joins and Query Optimization',
-      'Practice: Operating System Process Synchronization and Deadlocks',
-      'Practice: Binary Trees and Dynamic Programming Memoization'
+      'Review the concepts identified as missing or weak in the question-level feedback.',
+      'Practice answering technical questions aloud using a clear definition → reasoning → example structure.',
+      'Repeat the mock interview after targeted practice and compare question-level scores.',
     ];
+
+    const completedAt = new Date().toISOString();
+
+    /*
+     * Remove the in-memory session after generating the final report.
+     * This prevents stale sessions from being reused accidentally.
+     */
+    this.sessions.delete(sessionId);
 
     return {
       sessionId: session.sessionId,
-      overallScore,
+      overallScore: finalScore,
       technical: technicalAvg,
       relevance: relevanceAvg,
       communication: communicationAvg,
@@ -532,8 +914,9 @@ Provide objective, constructive grading. Respond ONLY with a valid JSON object m
       questionReviews,
       role: session.role,
       difficulty: session.difficulty,
-      completedAt: new Date().toISOString(),
-      aiDisclaimer: 'Scores and feedback are AI-generated estimates based on defined technical evaluation rubrics for student preparation purposes.'
+      completedAt,
+      aiDisclaimer:
+        'Scores and feedback are AI-generated estimates based on the defined interview rubric. They are intended for preparation and learning, not as a hiring decision.',
     };
   }
 }

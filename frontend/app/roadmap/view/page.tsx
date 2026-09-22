@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../../lib/api';
 import { RoadmapGenerateResponse, RoadmapTask } from '../../../types';
+import { ScrollReveal } from '../../../components/animations/ScrollReveal';
 
 export default function RoadmapViewPage() {
   const [roadmap, setRoadmap] = useState<RoadmapGenerateResponse | null>(null);
@@ -151,7 +152,7 @@ export default function RoadmapViewPage() {
 
       <div className="flex-1 p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-8 overflow-y-auto relative z-10">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <ScrollReveal className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.05] border border-white/[0.1] text-xs font-semibold text-purple-300 mb-3">
               <Map className="w-3.5 h-3.5 text-purple-400" />
@@ -172,10 +173,10 @@ export default function RoadmapViewPage() {
             <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
             <span>Customize Plan</span>
           </Link>
-        </div>
+        </ScrollReveal>
 
         {/* OVERALL PROGRESS BAR CARD */}
-        <div className="p-6 rounded-2xl bg-[#09090E]/90 border border-white/[0.08] backdrop-blur-xl shadow-2xl space-y-4">
+        <ScrollReveal className="p-6 rounded-2xl bg-[#09090E]/90 border border-white/[0.08] backdrop-blur-xl shadow-2xl space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <span className="text-xs font-semibold uppercase tracking-wider text-purple-400">
@@ -200,7 +201,7 @@ export default function RoadmapViewPage() {
               style={{ width: `${roadmap.progressPercentage}%` }}
             />
           </div>
-        </div>
+        </ScrollReveal>
 
         {/* FILTER TABS */}
         <div className="flex items-center gap-2 border-b border-white/[0.08] pb-3">

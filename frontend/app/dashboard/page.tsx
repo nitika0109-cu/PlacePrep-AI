@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { authStorage, api } from '../../lib/api';
 import { InterviewFinishResponse, RoadmapGenerateResponse } from '../../types';
+import { ScrollReveal } from '../../components/animations/ScrollReveal';
+import { StaggerContainer, StaggerItem } from '../../components/animations/StaggerContainer';
 
 export default function DashboardPage() {
   const [studentName, setStudentName] = useState('Student');
@@ -151,7 +153,7 @@ export default function DashboardPage() {
       {/* Main Dashboard Content */}
       <div className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-8 overflow-y-auto relative z-10">
         {/* Header Greeting */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <ScrollReveal className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-2">
               Good morning, {studentName}
@@ -174,10 +176,10 @@ export default function DashboardPage() {
               <span>New Mock Session</span>
             </Link>
           </div>
-        </div>
+        </ScrollReveal>
 
         {/* Hero / Summary Card: Your Placement Journey */}
-        <div className="card-surface p-6 sm:p-8 bg-[#09090E]/90 border border-white/[0.08] rounded-2xl relative overflow-hidden shadow-xl">
+        <ScrollReveal className="card-surface p-6 sm:p-8 bg-[#09090E]/90 border border-white/[0.08] rounded-2xl relative overflow-hidden shadow-xl">
           <div className="absolute -right-16 -top-16 w-64 h-64 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
 
           <div className="relative z-10 space-y-6">
@@ -196,24 +198,24 @@ export default function DashboardPage() {
             </div>
 
             {/* Metrics Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
-              <div className="bg-[#0E0E14] border border-white/[0.07] p-4 rounded-xl">
+            <StaggerContainer className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+              <StaggerItem className="bg-[#0E0E14] border border-white/[0.07] p-4 rounded-xl">
                 <span className="text-xs text-neutral-400 font-medium">Readiness Score</span>
                 <p className="text-2xl font-bold text-white mt-1">{readinessScore}%</p>
                 <span className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1 font-medium">
                   <TrendingUp className="w-3 h-3" /> Real-time tracking
                 </span>
-              </div>
+              </StaggerItem>
 
-              <div className="bg-[#0E0E14] border border-white/[0.07] p-4 rounded-xl">
+              <StaggerItem className="bg-[#0E0E14] border border-white/[0.07] p-4 rounded-xl">
                 <span className="text-xs text-neutral-400 font-medium">Mock Interviews</span>
                 <p className="text-2xl font-bold text-white mt-1">{interviewsCount} Completed</p>
                 <span className="text-[11px] text-purple-400 mt-1 font-medium block truncate">
                   {recentInterviews[0] ? `Last score: ${recentInterviews[0].overallScore}%` : 'Speech & Vision active'}
                 </span>
-              </div>
+              </StaggerItem>
 
-              <div className="bg-[#0E0E14] border border-white/[0.07] p-4 rounded-xl">
+              <StaggerItem className="bg-[#0E0E14] border border-white/[0.07] p-4 rounded-xl">
                 <span className="text-xs text-neutral-400 font-medium">Target Role</span>
                 <p className="text-lg sm:text-xl font-bold text-white mt-1 truncate" title={targetRoleDisplay}>
                   {targetRoleDisplay}
@@ -221,18 +223,18 @@ export default function DashboardPage() {
                 <span className="text-[11px] text-neutral-400 mt-1 block">
                   {activeRoadmap ? `${activeRoadmap.durationDays}-Day Prep Plan` : 'Placement Curriculum'}
                 </span>
-              </div>
+              </StaggerItem>
 
-              <div className="bg-[#0E0E14] border border-white/[0.07] p-4 rounded-xl">
+              <StaggerItem className="bg-[#0E0E14] border border-white/[0.07] p-4 rounded-xl">
                 <span className="text-xs text-neutral-400 font-medium">Daily Streak</span>
                 <p className="text-2xl font-bold text-white mt-1">{currentUser?.dailyStreak ?? 1} Days</p>
                 <span className="text-[11px] text-cyan-400 mt-1 font-medium block">
                   Consistent preparation
                 </span>
-              </div>
-            </div>
+              </StaggerItem>
+            </StaggerContainer>
           </div>
-        </div>
+        </ScrollReveal>
 
         {/* RECENT MOCK INTERVIEW ACTIVITY SECTION */}
         <div className="card-surface p-6 space-y-4 bg-[#09090E]/90 border border-white/[0.08] rounded-2xl">

@@ -13,6 +13,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { ScrollReveal } from '../../components/animations/ScrollReveal';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -69,7 +70,7 @@ export default function LoginPage() {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[580px] h-[420px] bg-purple-600/15 blur-[120px] rounded-full pointer-events-none" />
 
       {/* Centered Login Card */}
-      <div className="relative w-full max-w-md bg-[#09090F]/95 border border-white/[0.1] rounded-2xl shadow-2xl shadow-purple-950/40 backdrop-blur-xl p-7 sm:p-8 overflow-hidden z-10">
+      <ScrollReveal className="relative w-full max-w-md bg-[#09090F]/95 border border-white/[0.1] rounded-2xl shadow-2xl shadow-purple-950/40 backdrop-blur-xl p-7 sm:p-8 overflow-hidden z-10">
         {/* Top subtle glow line */}
         <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-purple-500/70 to-transparent" />
 
@@ -197,7 +198,7 @@ export default function LoginPage() {
           </Link>
         </div>
 
-      </div>
+      </ScrollReveal>
     </div>
   );
 }

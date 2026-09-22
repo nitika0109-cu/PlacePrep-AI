@@ -17,6 +17,7 @@ import {
 import { api } from '../../lib/api';
 import { DifficultyLevel, InterviewType } from '../../types';
 import { ResponsibleAINotice } from '../../components/interview/ResponsibleAINotice';
+import { ScrollReveal } from '../../components/animations/ScrollReveal';
 
 export default function InterviewSetupPage() {
   const router = useRouter();
@@ -72,7 +73,7 @@ export default function InterviewSetupPage() {
 
       <div className="flex-1 p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-8 overflow-y-auto relative z-10">
         {/* Heading */}
-        <div>
+        <ScrollReveal>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.04] border border-white/10 text-xs font-semibold text-purple-300 mb-2">
             <Video className="w-3.5 h-3.5 text-purple-400" />
             <span>AI Speech &amp; Vision Simulation</span>
@@ -83,7 +84,7 @@ export default function InterviewSetupPage() {
           <p className="text-sm text-neutral-400 mt-1">
             Practice under realistic interview conditions and receive AI-powered feedback.
           </p>
-        </div>
+        </ScrollReveal>
 
         {error && (
           <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-300">
@@ -92,7 +93,7 @@ export default function InterviewSetupPage() {
         )}
 
         {/* Configuration Card */}
-        <div className="card-surface p-6 sm:p-8 space-y-8 bg-[#09090E]/90 border border-white/[0.08] rounded-2xl shadow-xl">
+        <ScrollReveal className="card-surface p-6 sm:p-8 space-y-8 bg-[#09090E]/90 border border-white/[0.08] rounded-2xl shadow-xl">
           {/* Field 1: Target Role */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-300 mb-3">
@@ -225,7 +226,7 @@ export default function InterviewSetupPage() {
               </>
             )}
           </button>
-        </div>
+        </ScrollReveal>
       </div>
     </div>
   );

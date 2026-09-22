@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+
 import {
   MessageSquare,
   Video,
@@ -19,6 +20,8 @@ import {
 } from 'lucide-react';
 import { Footer } from '../components/layout/Footer';
 import { AnimatedSection } from '../components/AnimatedSection';
+import { ScrollReveal } from '../components/animations/ScrollReveal';
+import { StaggerContainer, StaggerItem } from '../components/animations/StaggerContainer';
 import { authStorage } from '../lib/api';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
@@ -38,7 +41,7 @@ export default function LandingPage() {
   useEffect(() => {
     setIsLoggedIn(!!authStorage.getToken());
   }, []);
-
+  
   return (
     <div className="flex flex-col min-h-screen bg-[#07111F] text-white selection:bg-purple-600 selection:text-white">
 
@@ -450,17 +453,11 @@ export default function LandingPage() {
 
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <StaggerContainer className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
             {/* Feature 1 */}
 
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-60px' }}
-              transition={{ duration: 0.4, delay: 0, ease: EASE }}
-              className="card-elevated p-7 flex flex-col justify-between group"
-            >
+            <StaggerItem className="card-elevated p-7 flex flex-col justify-between group">
 
               <div>
 
@@ -505,17 +502,11 @@ export default function LandingPage() {
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>
 
-            </motion.div>
+            </StaggerItem>
 
             {/* Feature 2 */}
 
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-60px' }}
-              transition={{ duration: 0.4, delay: 0.08, ease: EASE }}
-              className="card-elevated p-7 flex flex-col justify-between relative group border-purple-500/30"
-            >
+            <StaggerItem className="card-elevated p-7 flex flex-col justify-between relative group border-purple-500/30">
 
               <div className="absolute -top-2.5 right-5 bg-gradient-to-r from-purple-500 to-pink-500 text-[10px] font-bold uppercase tracking-wider text-white px-2.5 py-0.5 rounded-full shadow">
                 Voice + Vision
@@ -564,17 +555,11 @@ export default function LandingPage() {
                 <ArrowRight className="w-3.5 h-3.5 text-black" />
               </Link>
 
-            </motion.div>
+            </StaggerItem>
 
             {/* Feature 3 */}
 
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-60px' }}
-              transition={{ duration: 0.4, delay: 0.16, ease: EASE }}
-              className="card-elevated p-7 flex flex-col justify-between group"
-            >
+            <StaggerItem className="card-elevated p-7 flex flex-col justify-between group">
 
               <div>
 
@@ -619,9 +604,9 @@ export default function LandingPage() {
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>
 
-            </motion.div>
+            </StaggerItem>
 
-          </div>
+          </StaggerContainer>
 
         </div>
       </AnimatedSection>
@@ -650,7 +635,7 @@ export default function LandingPage() {
 
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
 
             {[
               { num: '01', title: 'Tell us your goal', desc: 'Select your target placement role, current skill baseline, and daily study hours.' },
@@ -658,14 +643,7 @@ export default function LandingPage() {
               { num: '03', title: 'Follow your roadmap', desc: 'Track daily milestones, complete focused problem sets, and log your progress.' },
               { num: '04', title: 'Improve continuously', desc: 'Review question-by-question technical evaluations and strengthen targeted weak spots.' },
             ].map((step, i) => (
-              <motion.div
-                key={step.num}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: '-60px' }}
-                transition={{ duration: 0.4, delay: i * 0.08, ease: EASE }}
-                className="card-surface p-6 relative"
-              >
+              <StaggerItem key={step.num} className="card-surface p-6 relative">
                 <div className="text-3xl font-black text-purple-500/40 mb-3 font-mono">
                   {step.num}
                 </div>
@@ -677,13 +655,45 @@ export default function LandingPage() {
                 <p className="text-xs text-neutral-400 leading-relaxed">
                   {step.desc}
                 </p>
-              </motion.div>
+              </StaggerItem>
             ))}
 
-          </div>
+          </StaggerContainer>
 
         </div>
 
+      </AnimatedSection>
+
+      {/* ========================================================= */}
+      {/* AI PRACTICE MODULES */}
+      {/* ========================================================= */}
+
+      <AnimatedSection className="py-24 bg-[#07111F] relative border-b border-white/[0.06]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid lg:grid-cols-2 gap-6">
+          <ScrollReveal className="card-elevated p-7 sm:p-9 relative overflow-hidden group">
+            <div className="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-purple-500/15 blur-3xl pointer-events-none" />
+            <div className="relative z-10">
+              <div className="text-xs font-semibold uppercase tracking-widest text-purple-400 mb-3">Mock Interview Studio</div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Practice the pressure before it counts.</h2>
+              <p className="mt-4 text-sm text-neutral-400 leading-relaxed max-w-lg">Run realistic voice and vision simulations, then turn every answer into a sharper next attempt.</p>
+              <Link href="/interview" className="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-white hover:text-purple-300 transition-colors">
+                Enter Mock Interview Studio <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal delay={0.1} className="card-elevated p-7 sm:p-9 relative overflow-hidden group">
+            <div className="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
+            <div className="relative z-10">
+              <div className="text-xs font-semibold uppercase tracking-widest text-cyan-400 mb-3">Adaptive Roadmap</div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">A clear next step, every day.</h2>
+              <p className="mt-4 text-sm text-neutral-400 leading-relaxed max-w-lg">Translate your role, level, and available time into a focused preparation plan that keeps moving with you.</p>
+              <Link href="/roadmap" className="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-white hover:text-cyan-300 transition-colors">
+                Build Your Roadmap <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </ScrollReveal>
+        </div>
       </AnimatedSection>
 
       {/* ========================================================= */}
