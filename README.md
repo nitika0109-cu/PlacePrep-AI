@@ -17,7 +17,7 @@ College students preparing for technical campus placement drives face significan
 
 ---
 
-## 2. Three Core AI Features
+## 2. 3 Core AI Features
 
 PlacePrep deliberately focuses on **EXACTLY THREE** high-impact AI capabilities accessible directly from the student dashboard:
 
